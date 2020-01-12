@@ -1,0 +1,117 @@
+import re
+import random
+import os
+import sys
+import pickle
+import argparse
+
+
+
+def show_progress(progress=0, prefix='', suffix=''):
+	sys.stdout.write("\r%s%d%%%s" % (prefix, progress, suffix))
+	sys.stdout.flush()
+
+
+class Model:
+	fit_data = {}
+
+
+	def __init__(self):
+		return
+
+
+  @staticmethod
+	def parse_sentence_to_dict(string, data):
+		re.sub('\s+', ' ', string).strip()
+		words = string.split()
+		for i in range(len(words) - 1):
+			current = words[i].lower()
+			next = words[i + 1].lower()
+			if current in list(data.keys()):
+				data[current].append(next)
+			else:
+				data[current] = [next]
+
+
+	@staticmethod
+	def is_russian(char):
+		return 1040 <= ord(char) <= 1103
+
+
+	def fit(self, input_file):
+		data = {}
+		punctuation = [',', '.', ':', '-', '?', '.', ')', '(']
+		digits = ['1, 2, 3, 4, 5, 6, 7, 8, 9, 0']
+		with open(input_file) as inf:
+			string = ""
+			i = 0
+			size = os.path.getsize(input_file)
+			while True:
+				current_char = inf.read(1)
+				i += 1
+				progress = int(i / size * 100)
+				show_progress(progress, "Progress: ", " complete")
+				if not current_char:  # EOF
+					self.fit_data = data
+					return
+				elif current_char in digits:  # if current char is digit
+					continue
+				elif current_char in punctuation:  # if current char is punctuation symbol
+					self.parse_sentence_to_dict(string, data)
+					string = ""
+				elif self.is_russian(current_char) or current_char == ' ':
+					string += current_char
+
+
+	def generate(self, output_file, seed, limit):
+		random.seed(seed)
+		prev = random.choice(list(self.fit_data.keys()))
+		f = open(output_file, "w")
+		for i in range(limit):
+			progress = int(i / limit * 100)
+			show_progress(progress, "Progress: ", " complete")
+			try:
+				current = random.choice(self.fit_data[prev])
+			except KeyError:
+				current = random.choice(list(self.fit_data.keys()))
+			f.write(current)
+			f.write(" ")
+			prev = current
+
+
+	def save(self, output_file):
+		f = open(output_file, "wb")
+		pickle.dump(self.fit_data, f)
+
+
+	def fit_and_save(self, fit_input_file, model_save_file):
+		self.fit(fit_input_file)
+		self.save(model_save_file)
+    
+
+	def load_and_generate(self, generate_output_file, model_load_file, seed, limit):
+		self.load(model_load_file)
+		self.generate(generate_output_file, seed, limit)
+
+
+	def load(self, input_file):
+		f = open(input_file, "rb")
+		self.fit_data = pickle.load(f)
+		return self.fit_data
+
+
+
+parser = argparse.ArgumentParser()
+model = Model()
+parser.add_argument("action", help="'generate' or 'fit'", action="store")
+parser.add_argument("--fin", help="specify input file for fit", nargs='?', default="input.in")
+parser.add_argument("--gout", help="specify output file for generation", nargs='?', default="output.out")
+parser.add_argument("--msave", help="specify where to save(serialize) model", nargs='?', default="model.bin")
+parser.add_argument("--mload", help="specify from where load model", nargs='?', default="model.bin")
+parser.add_argument("--seed", help="specify seed for generation", nargs='?', default=0)
+parser.add_argument("--wlimit", help="specify number of generated words", nargs='?', default=1000, type=int)
+args = parser.parse_args()
+if args.action == "fit":
+	model.fit_and_save(args.fin, args.msave)
+if args.action == "generate":
+	model.load_and_generate(args.gout, args.mload, args.seed, args.wlimit)
